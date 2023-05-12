@@ -1,11 +1,17 @@
-setwd("C:/Users/colle/Documents/R/co2aviation/Code/functions")
-source("load_package.R")
-source("read_price.R")
-source("read_ipc.r")
-source("cor_ipc_ipp.r")
-source("event_tax.R")
-source("event_rail.R")
+source("functions/load_package.R")
+source("functions/event_tax.R")
+source("functions/event_rail.R")
+source("functions/read_price.R")
+source("functions/read_ipc.R")
+source("functions/cor_ipc_ipp.R")
 
+
+
+#Call database creation
+# source("database.R")
+
+#When already created, load existing database
+load("workspace_save/df_final.Rdata")
 
 ###### Effects of LGV openings #####
 # Tax effects : True effect only on origin
@@ -41,6 +47,12 @@ df_final[with(df_final,(orig_count=="NO") & year == 2018),"t_NO"]  <- 83
 df_final[with(df_final,(orig_count=="NO") & year == 2019),"t_NO"]  <- 84*3/12 + 75*9/12
 
 # Correction of the tax wih PPP (Purchasing Power Parity) and Consumer Price Index (CPI)
+ppp <- read_price() %>% filter(orig_count %in% names(table(df_final$orig_count)) , year >=2001)
+ipc <- read_ipc() %>% filter(country %in% names(table(df_final$orig_count)) & year >=2001)
+price_cor <- ipc
+price_cor[,3]  <- 1 /( ppp[,3]*ipc[,3])
+
+
 df_final <- cor_ipc_ipp("UK","t_UK",df=df_final)
 df_final <- cor_ipc_ipp("IE","t_Dublin",df=df_final)
 df_final <- cor_ipc_ipp("DE","t_DE",df=df_final)
@@ -49,8 +61,9 @@ df_final <- cor_ipc_ipp("AT","t_AT",df=df_final)
 df_final <- cor_ipc_ipp("FR","t_FR",df=df_final)
 df_final <- cor_ipc_ipp("NO","t_NO",df=df_final)
 
+
 #Global tax estimation
-df_final$t_global <- with(df_final,t_AT +t_DE + t_Dublin + t_FR +t_NL + t_UK+ t_NO)
+df_final$t_global <- with(df_final,t_AT + t_DE + t_Dublin + t_FR + t_NL + t_UK + t_NO)
 
 #Rail length, prorata temporis according to the date of implementation
 new_rail_apply <- function(rail,data,HSR_line,length,year,share_1st_year){
@@ -73,6 +86,7 @@ df_final <- new_rail_apply("new_rail",df_final,"Munich_Nuernberg",90,2006,8/12)
 df_final <- new_rail_apply("new_rail",df_final,"Munich_Stuttgart",61,2011,1/12)
 df_final <- new_rail_apply("new_rail",df_final,"Bologna_Rome",78,2009,1/12)
 
+
 #Transformning data into bilateral flow
 data_city_bilateral <-  df_final %>% 
   dplyr::mutate("SPA_bilat" =o_SPA*d_SPA,"POP_bilat"=o_POP*d_POP,"ind_rail_bilat"=(ind_rail_o+ind_rail_d)/2) %>%
@@ -88,9 +102,9 @@ data_city_bilateral <-  df_final %>%
                    #,intra_count=mean(intra_count)
                    )
 data_city_bilateral$id <- paste(data_city_bilateral$connexion_city,data_city_bilateral$year,sep = "_")
-data_city_bilateral$tax_treatement <- 1
-df[df$orig_count %in% list$orig_count | df$dest_count %in% list$orig_count,"treated"] <- 1
-max(c("a","b"))
+# data_city_bilateral$tax_treatement <- 1
+# data_city_bilateral[data_city_bilateral$orig_count %in% list$orig_count | df$dest_count %in% list$orig_count,"treated"] <- 1
+
 #Creation of short, medium and long haul tax effects                   
 data_city_bilateral$tax_0_500 <- ifelse(data_city_bilateral$dist<500,data_city_bilateral$t_global,0)
 data_city_bilateral$tax_500_1000 <- ifelse(data_city_bilateral$dist>=500 &data_city_bilateral$dist < 1000,data_city_bilateral$t_global,0)
@@ -144,40 +158,11 @@ time_window_event(df_final,list)
 
 event_rail_l(data_city_bilateral,list,min_year = -5,max_year =7,legend='Event study: Staggered treatment (TWFE) on HSR openings >50km' )
 
-
-
-
-
-
-
-
-
-
-
-
-
-############ Appendices results ##############
-
-#Diff�rentiation par intra m�tropole - extra
-data_city_bilateral$tax_intra <- data_city_bilateral$t_global*data_city_bilateral$intra_count
-data_city_bilateral$tax_extra <- data_city_bilateral$t_global*(1-data_city_bilateral$intra_count)
-ols_9 = feols(log(passengers) ~ log(SPA_bilat)+tax_intra+tax_extra|connexion_city+ year,cluster = ~ connexion_city,data = data_city_bilateral )
-etable(ols_1,ols_6,ols_7,ols_8,ols_9,vcov = "twoway",fitstat=c("n","ll","r2","pr2","aic","bic"))
-
-#R�gression RAIL, en pond�rant dist HSR opening / dist entre villes
-data_city_bilateral$rail_ratio <- data_city_bilateral$new_rail/data_city_bilateral$dist
-ols_10 = feols(log(passengers) ~ log(SPA_bilat)+t_global+rail_ratio|connexion_city+ year,cluster = ~ connexion_city,data = data_city_bilateral )
-#R�gression RAIL, par classes d'ouverture
-data_city_bilateral$rail <-  ifelse(data_city_bilateral$dist>=1000,1,0)
-etable(ols_1,ols_10,vcov = "twoway",fitstat=c("n","ll","r2","pr2","aic","bic"))
-
-
 ############## OVerall effect of the tax and HSR#############
 
 sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global),na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global),na.rm = TRUE)- sum(data_city_bilateral$passengers,na.rm = TRUE))/sum(data_city_bilateral$passengers,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))/sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE)
-
 
 (sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))*0.115
 #3% de baisse du nb de passagers / 187 millions de passagers sur toute la p�riode (p�rim�tre 75%)
@@ -187,85 +172,9 @@ sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail),na.
 (sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail),na.rm = TRUE)- sum(data_city_bilateral$passengers,na.rm = TRUE))/sum(data_city_bilateral$passengers,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))/sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE)
 
-# Baisse de 0,7% du nombre de passagers / de 4 millions sur la p�riode (p�rim�tre des lignes + de 50km)
+# Decrease of 0,7% of passenger numbers / de 4 millions sur la p�riode (p�rim�tre des lignes + de 50km)
 
 (sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))*0.115
 
 
-# Tableau 
 
-#Welch test ou correlation entre origine et destination
-library(cartograflow)
-# tabflow_all<-flowtype(df_final,format="L", origin="o_city", destination="d_city", fij="passengers", x="alltypes")
-
-
-
-# End of data treatment
-df_final$id <- paste(df_final$connexion,df_final$year,sep = "_")
-df_final_no_na <- filter(df_final,!is.na(passengers))
-n_occur <- data.frame(table(df_final_no_na$id)) %>% filter(Freq!=2)
-df_final_no_na <-  filter(df_final_no_na,!(id %in% n_occur$Var1))
-
-df_city <- df_final_no_na %>% 
-  group_by(o_city,d_city,year) %>%
-  dplyr::summarise(passengers=sum(passengers),t_global=mean(t_global)) 
-df_city$connexion_city <- ifelse(df_city$o_city<df_city$d_city,
-                                 paste(df_city$o_city,df_city$d_city,sep="_"),
-                                 paste(df_city$d_city,df_city$o_city,sep="_"))
-df_city$id <- paste(df_city$connexion_city,df_city$year,sep = "_")
-df_city_treated <- filter(df_city,t_global>0)
-n_occur <- (data.frame(table(df_city_treated$id)) %>% filter(Freq!=2))
-df_city_one_leg_treated <- filter(df_city,(id %in% n_occur$Var1))
-
-# df_city_bilat_treated <- filter(df_city,id %in% df_city_treated$id)
-
-df_city_one_leg_treated <- arrange(df_city_one_leg_treated,id)
-df_city_one_leg_treated$tax <-  ifelse(df_city_one_leg_treated$t_global>0,1,0) 
-df_city_tax <-  filter(df_city_one_leg_treated,t_global>0) 
-df_city_notax <-  filter(df_city_one_leg_treated,t_global==0)
-
-df_city_one_leg_treated$logpas <- log(df_city_one_leg_treated$passengers)
-ggboxplot(df_city_one_leg_treated, x = "tax", y = "passengers", 
-          color = "tax", palette = c("#00AFBB", "#E7B800"),
-          order = c("0", "1"),
-          ylab = "passengers", xlab = "tax")
-ggboxplot(df_city_one_leg_treated, x = "tax", y = "logpas", 
-          color = "tax", palette = c("#00AFBB", "#E7B800"),
-          order = c("0", "1"),
-          ylab = "logpas", xlab = "tax")
-
-mean(log(df_city_tax$passengers))
-mean(log(df_city_notax$passengers))
-t.test(df_city_tax$passengers,df_city_notax$passengers,paired = TRUE, alternative = "two.sided")
-t.test(log(df_city_tax$passengers),log(df_city_notax$passengers),paired = TRUE, alternative = "less")
-
-df_city  <- df_city_one_leg_treated %>% 
-  group_by(connexion_city) %>% 
-  summarise(year_tax=min(year)) %>%
-  mutate(id=paste(connexion_city,year_tax,sep = "_"))
-df_city <- filter(df_city_one_leg_treated, id %in% df_city$id)
-df_city_tax <-  filter(df_city,t_global>0) 
-df_city_notax <-  filter(df_city,t_global==0)
-t.test(log(df_city_tax$passengers),log(df_city_notax$passengers),paired = TRUE, alternative = "two.sided")
-t.test(df_city_tax$passengers,df_city_notax$passengers,paired = TRUE, alternative = "two.sided")
-
-
-df_city_tax <-  filter(df_city_one_leg_treated,t_global>0) 
-df_city_notax <-  filter(df_city_one_leg_treated,t_global==0)
-
-
-############### Main 20 routes for emission ICAO calculator #############
-# Plot of the top 10 air routes
-sum_passengers <- df_final %>% 
-  group_by(connexion) %>% 
-  summarise(sum_pas = sum(passengers,na.rm=TRUE))
-top_20 <- head(arrange(sum_passengers,desc(sum_pas)),20)["connexion"]
-top_20 <- filter(df_final,connexion %in% top_20$connexion,year==2001)
-write.xlsx(top_20)
-
-######### Fixed effects #########
-fixedEffects = fixef(ols_1)
-summary(fixedEffects)
-plot(fixedEffects$year,x=names(fixedEffects$year))
-
-###### Event studies #########
