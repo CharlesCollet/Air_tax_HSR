@@ -5,8 +5,6 @@ source("functions/read_price.R")
 source("functions/read_ipc.R")
 source("functions/cor_ipc_ipp.R")
 
-
-
 #Call database creation
 # source("database.R")
 
@@ -49,9 +47,6 @@ df_final[with(df_final,(orig_count=="NO") & year == 2019),"t_NO"]  <- 84*3/12 + 
 # Correction of the tax wih PPP (Purchasing Power Parity) and Consumer Price Index (CPI)
 ppp <- read_price() %>% filter(orig_count %in% names(table(df_final$orig_count)) , year >=2001)
 ipc <- read_ipc() %>% filter(country %in% names(table(df_final$orig_count)) & year >=2001)
-price_cor <- ipc
-price_cor[,3]  <- 1 /( ppp[,3]*ipc[,3])
-
 
 df_final <- cor_ipc_ipp("UK","t_UK",df=df_final)
 df_final <- cor_ipc_ipp("IE","t_Dublin",df=df_final)
@@ -60,7 +55,6 @@ df_final <- cor_ipc_ipp("NL","t_NL",df=df_final)
 df_final <- cor_ipc_ipp("AT","t_AT",df=df_final)
 df_final <- cor_ipc_ipp("FR","t_FR",df=df_final)
 df_final <- cor_ipc_ipp("NO","t_NO",df=df_final)
-
 
 #Global tax estimation
 df_final$t_global <- with(df_final,t_AT + t_DE + t_Dublin + t_FR + t_NL + t_UK + t_NO)
@@ -85,7 +79,6 @@ df_final <- new_rail_apply("new_rail",df_final,"Naples_Rome",193,2006,1)
 df_final <- new_rail_apply("new_rail",df_final,"Munich_Nuernberg",90,2006,8/12)
 df_final <- new_rail_apply("new_rail",df_final,"Munich_Stuttgart",61,2011,1/12)
 df_final <- new_rail_apply("new_rail",df_final,"Bologna_Rome",78,2009,1/12)
-
 
 #Transformning data into bilateral flow
 data_city_bilateral <-  df_final %>% 
@@ -128,7 +121,7 @@ ols_2 = feols(log(passengers) ~ t_global + new_rail+log(SPA_bilat)+log(POP_bilat
 ols_3 = feols(log(passengers) ~ t_global + new_rail+log(SPA_bilat)+ind_rail_bilat|connexion_city+ year,cluster = ~ connexion_city,data = data_city_bilateral )
 ols_4= feols(log(passengers) ~ t_global + new_rail+log(SPA_bilat)+ind_rail_bilat|connexion_city+ year,cluster = ~ connexion_city,data = data_city_bilateral )
 etable(ols_1,ols_2,ols_3,ols_4,fitstat=c("n","ll","r2","pr2","aic","bic"))
-etable(ols_1,ols_2,ols_3,ols_4,vcov = "twoway",fitstat=c("n","ll","r2","pr2","aic","bic"),tex = TRUE)
+etable(ols_1,ols_2,ols_3,ols_4,vcov = "twoway",fitstat=c("n","ll","r2","aic"),tex = TRUE)
 
 ### Event study on tax
 
@@ -138,8 +131,8 @@ list <- data.frame(
   year_treated=c(2011,2011,2016,2007))
 list2 <- c()
 time_window_event_tax(data_city_bilateral,list)
-event_tax_l(data_city_bilateral,list,list2,min_year = -6,max_year = 8,
-            legend = "Event study: Staggered treatment (TWFE) on AT, DE and UK air taxes")
+event_tax_l(data_city_bilateral,list,list2,min_year = -5,max_year = 8,
+            legend = "Event study: Staggered treatment (TWFE) on AT, DE, NO and UK air taxes")
 
 #Without NO tax to get more robust post treatment observations from t=3
 list <- data.frame(
@@ -160,19 +153,17 @@ event_rail_l(data_city_bilateral,list,min_year = -5,max_year =7,legend='Event st
 
 ############## OVerall effect of the tax and HSR#############
 
+#For taxes
 sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global),na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global),na.rm = TRUE)- sum(data_city_bilateral$passengers,na.rm = TRUE))/sum(data_city_bilateral$passengers,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))/sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE)
 
 (sum(data_city_bilateral$passengers*exp(-0.01*data_city_bilateral$t_global)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))*0.115
-#3% de baisse du nb de passagers / 187 millions de passagers sur toute la p�riode (p�rim�tre 75%)
 
 #For HSR
 sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail),na.rm = TRUE)- sum(data_city_bilateral$passengers,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail),na.rm = TRUE)- sum(data_city_bilateral$passengers,na.rm = TRUE))/sum(data_city_bilateral$passengers,na.rm = TRUE)
 (sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))/sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE)
-
-# Decrease of 0,7% of passenger numbers / de 4 millions sur la p�riode (p�rim�tre des lignes + de 50km)
 
 (sum(data_city_bilateral$passengers*exp(-0.0024*data_city_bilateral$new_rail)*data_city_bilateral$dist,na.rm = TRUE)- sum(data_city_bilateral$passengers*data_city_bilateral$dist,na.rm = TRUE))*0.115
 

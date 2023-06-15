@@ -99,7 +99,7 @@ event_rail_l <- function(df,list,min_year=NA,max_year=NA,legend_place="topright"
   #Plot the two TWE
   x11(width = 20, height = 14)
   iplot(list(mod_twfe, mod_sunab), sep = 0.1,col = c(1, 4),pt.pch= c(20,15),
-        xlab = "Time to treatment (years)",ylab="",
+        xlab = "Time to treatment (years)",
         main = legend)
   abline(v=-0.5)
   legend("bottomleft", col = c(1, 4), pch = c(20, 15), 
